@@ -8,6 +8,7 @@ Original file is located at
 """
 
 from google.colab import drive
+drive.mount('/content/drive')   # ဤစာကြောင်း ပါနေပါကလည်း ဖျက်ပါ
 import pandas as pd
 
 drive.mount('/content/drive')
