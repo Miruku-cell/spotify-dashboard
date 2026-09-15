@@ -4,24 +4,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 import glob
 
+# Scikit-learn Tools
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, mean_squared_error, r2_score
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-st.set_page_config(page_title="Spotify Mining Dashboard", layout="wide")
-st.title("🎵 Spotify Predictive Mining Dashboard")
+# FP-Growth
+from mlxtend.frequent_patterns import fpgrowth, association_rules
 
+st.set_page_config(page_title="Spotify Full Data Mining Project", layout="wide")
+st.title("🎵 Spotify End-to-End Data Mining Project Dashboard")
+
+# 1. Load Data
 @st.cache_data
 def load_data():
-    csv_candidates = glob.glob("*.csv")
-    if not csv_candidates:
+    csv_files = glob.glob("*.csv")
+    if not csv_files:
         raise FileNotFoundError("CSV dataset not found in repository.")
-    df = pd.read_csv(csv_candidates[0])
+    df = pd.read_csv(csv_files[0])
     
+    # Feature Engineering
     if 'log_stream_count' not in df.columns and 'stream_count' in df.columns:
         df['log_stream_count'] = np.log1p(df['stream_count'])
     if 'artist_track_count' not in df.columns and 'artist_name' in df.columns:
@@ -32,24 +40,108 @@ def load_data():
 
 try:
     df = load_data()
-    st.sidebar.header("🎛️ Settings")
-    target_var = st.sidebar.selectbox("1. Choose Target Label", ['popularity_category', 'genre'])
-    
-    candidate_features = ['danceability', 'popularity', 'stream_count', 'log_stream_count', 'artist_track_count']
-    available_features = [c for c in candidate_features if c in df.columns and c != target_var]
-    
-    selected_features = st.sidebar.multiselect("2. Choose Predictor Features", available_features, default=available_features[:4])
+    st.sidebar.success(f"Loaded {len(df):,} records successfully!")
+except Exception as e:
+    st.error(f"Data loading error: {e}")
+    st.stop()
 
-    if st.sidebar.button("🚀 Train 4 Models & Compare", type="primary"):
-        if len(selected_features) < 1:
-            st.error("Please select at least 1 feature.")
+# Dashboard Tabs for 4 Mining Tasks
+tab1, tab2, tab3, tab4 = st.tabs([
+    "1. Association (FP-Growth)", 
+    "2. Clustering (K-Means)", 
+    "3. Classification (4 Models)", 
+    "4. Numeric Prediction (Regression)"
+])
+
+# ==============================================================================
+# TAB 1: FP-GROWTH ASSOCIATION RULES
+# ==============================================================================
+with tab1:
+    st.header("🛒 Frequent Pattern Mining (FP-Growth)")
+    st.markdown("သီချင်းများ၏ High/Low feature attributes များ အတူတကွ တွဲဖက်ဖြစ်ပေါ်မှု စည်းမျဉ်းများကို တူးဖော်ခြင်း")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        min_sup = st.slider("Minimum Support (minsup)", min_value=0.01, max_value=0.5, value=0.05, step=0.01)
+    with col_b:
+        min_conf = st.slider("Minimum Confidence (minconf)", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
+        
+    num_cols = [c for c in ['danceability', 'energy', 'speechiness', 'acousticness', 'popularity'] if c in df.columns]
+    
+    # Binarize data for FP-growth
+    df_bin = pd.DataFrame()
+    for c in num_cols:
+        med = df[c].median()
+        df_bin[f"High_{c}"] = df[c] >= med
+        
+    frequent_itemsets = fpgrowth(df_bin, min_support=min_sup, use_colnames=True)
+    
+    if not frequent_itemsets.empty:
+        rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_conf)
+        if not rules.empty:
+            rules_disp = rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']].sort_values(by='lift', ascending=False)
+            rules_disp['antecedents'] = rules_disp['antecedents'].apply(lambda x: ', '.join(list(x)))
+            rules_disp['consequents'] = rules_disp['consequents'].apply(lambda x: ', '.join(list(x)))
+            st.dataframe(rules_disp.head(20), use_container_width=True)
         else:
-            df_eval = df.dropna(subset=selected_features + [target_var]).copy()
+            st.warning("No association rules found with the current confidence threshold.")
+    else:
+        st.warning("No frequent itemsets found with the current support threshold.")
+
+# ==============================================================================
+# TAB 2: K-MEANS CLUSTERING
+# ==============================================================================
+with tab2:
+    st.header("🎯 Cluster Analysis (K-Means)")
+    st.markdown("သီချင်းများ၏ သဘာဝအလျောက် အုပ်စုဖွဲ့တည်ရှိမှု ပုံစံများကို ဖော်ထုတ်ခြင်း")
+    
+    cluster_features = [c for c in ['danceability', 'energy', 'valence', 'popularity', 'stream_count'] if c in df.columns]
+    selected_cluster_features = st.multiselect("Clustering Features ရွေးချယ်ပါ", cluster_features, default=cluster_features[:3])
+    k_val = st.slider("Cluster အရေအတွက် (k)", min_value=2, max_value=8, value=3)
+    
+    if len(selected_cluster_features) >= 2:
+        df_clust = df[selected_cluster_features].dropna()
+        scaler = StandardScaler()
+        scaled_clust = scaler.fit_transform(df_clust)
+        
+        kmeans = KMeans(n_clusters=k_val, random_state=42, n_init=10)
+        df_clust['Cluster'] = kmeans.fit_predict(scaled_clust)
+        
+        col_c1, col_c2 = st.columns([1, 1])
+        with col_c1:
+            st.subheader("Cluster Distribution")
+            st.write(df_clust['Cluster'].value_counts().rename("Song Count"))
+        with col_c2:
+            st.subheader("Cluster Scatter Plot")
+            fig, ax = plt.subplots(figsize=(6, 4))
+            scatter = ax.scatter(df_clust[selected_cluster_features[0]], df_clust[selected_cluster_features[1]], c=df_clust['Cluster'], cmap='viridis', alpha=0.6)
+            ax.set_xlabel(selected_cluster_features[0])
+            ax.set_ylabel(selected_cluster_features[1])
+            plt.colorbar(scatter, label='Cluster ID')
+            st.pyplot(fig)
+    else:
+        st.error("ကျေးဇူးပြု၍ Clustering အတွက် Feature အနည်းဆုံး ၂ ခု ရွေးပေးပါ။")
+
+# ==============================================================================
+# TAB 3: CLASSIFICATION (4 MODELS)
+# ==============================================================================
+with tab3:
+    st.header("🏆 Classification Predictive Mining (4 Classifiers)")
+    target_var = st.selectbox("Target Label ရွေးပါ", ['popularity_category', 'genre'])
+    candidate_features = ['danceability', 'popularity', 'stream_count', 'log_stream_count', 'artist_track_count']
+    avail_f = [c for c in candidate_features if c in df.columns and c != target_var]
+    selected_f = st.multiselect("Predictor Features ၄ ခု ရွေးပါ", avail_f, default=avail_f[:4])
+    
+    if st.button("🚀 Train & Compare 4 Models", type="primary"):
+        if len(selected_f) < 1:
+            st.error("Feature အနည်းဆုံး ၁ ခု ရွေးပေးပါ။")
+        else:
+            df_eval = df.dropna(subset=selected_f + [target_var]).copy()
             if target_var == 'genre':
                 top_genres = df_eval['genre'].value_counts().nlargest(8).index
                 df_eval = df_eval[df_eval['genre'].isin(top_genres)]
 
-            X = df_eval[selected_features]
+            X = df_eval[selected_f]
             y = LabelEncoder().fit_transform(df_eval[target_var].astype(str))
 
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -69,10 +161,12 @@ try:
                 m.fit(X_train, y_train)
                 preds = m.predict(X_test)
                 acc = accuracy_score(y_test, preds)
+                err = 1.0 - acc
                 prec, rec, f1, _ = precision_recall_fscore_support(y_test, preds, average='weighted', zero_division=0)
                 records.append({
                     "Classifier Model": name,
                     "Accuracy (%)": round(acc * 100, 2),
+                    "Error Rate (%)": round(err * 100, 2),
                     "Precision": round(prec, 4),
                     "Recall": round(rec, 4),
                     "F1-Score": round(f1, 4)
@@ -80,16 +174,66 @@ try:
 
             res_df = pd.DataFrame(records).sort_values(by="Accuracy (%)", ascending=False)
             
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.subheader("📋 Evaluation Table")
+            c1, c2 = st.columns([1.1, 0.9])
+            with c1:
+                st.subheader("📋 Performance Evaluation Table")
                 st.dataframe(res_df, use_container_width=True)
-            with col2:
-                st.subheader("📊 Accuracy Chart")
+            with c2:
+                st.subheader("📊 Accuracy Comparison Chart")
                 fig, ax = plt.subplots(figsize=(6, 4))
-                ax.bar(res_df["Classifier Model"], res_df["Accuracy (%)"], color=['#1DB954', '#4682B4', '#FFA500', '#9370DB'])
+                bars = ax.bar(res_df["Classifier Model"], res_df["Accuracy (%)"], color=['#1DB954', '#4682B4', '#FFA500', '#9370DB'])
                 ax.set_ylim(0, 105)
                 plt.xticks(rotation=20)
+                for b in bars:
+                    h = b.get_height()
+                    ax.text(b.get_x() + b.get_width()/2.0, h + 1.5, f"{h:.2f}%", ha='center', va='bottom', fontweight='bold')
                 st.pyplot(fig)
-except Exception as e:
-    st.error(f"Error loading data: {e}")
+
+# ==============================================================================
+# TAB 4: MULTIPLE LINEAR REGRESSION
+# ==============================================================================
+with tab4:
+    st.header("📈 Numeric Prediction (Multiple Linear Regression)")
+    st.markdown("သီချင်းများ၏ continuous value (ဥပမာ- Stream Count / Popularity) ကို ခန့်မှန်းတွက်ချက်ခြင်း")
+    
+    num_target = 'log_stream_count' if 'log_stream_count' in df.columns else 'popularity'
+    st.info(f"Prediction Target Variable: **{num_target}**")
+    
+    reg_features = [c for c in ['danceability', 'energy', 'valence', 'artist_track_count'] if c in df.columns]
+    selected_reg_features = st.multiselect("Regression Predictor Features ရွေးပါ", reg_features, default=reg_features[:3])
+    
+    if st.button("🚀 Train Regression Model"):
+        df_reg = df.dropna(subset=selected_reg_features + [num_target])
+        X_reg = df_reg[selected_reg_features]
+        y_reg = df_reg[num_target]
+        
+        X_tr, X_te, y_tr, y_te = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
+        
+        reg_model = LinearRegression()
+        reg_model.fit(X_tr, y_tr)
+        y_pred = reg_model.predict(X_te)
+        
+        mae = mean_absolute_error(y_te, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_te, y_pred))
+        r2 = r2_score(y_te, y_pred)
+        
+        rc1, rc2 = st.columns([1, 1])
+        with rc1:
+            st.subheader("Model Formula & Parameters")
+            st.write(f"**Intercept (b):** {reg_model.intercept_:.4f}")
+            for feat, coef in zip(selected_reg_features, reg_model.coef_):
+                st.write(f"- Weight for **{feat}** ($w$): {coef:.4f}")
+            st.markdown("---")
+            st.subheader("Evaluation Metrics")
+            st.write(f"- **MAE:** {mae:.4f}")
+            st.write(f"- **RMSE:** {rmse:.4f}")
+            st.write(f"- **R² Score:** {r2:.4f}")
+            
+        with rc2:
+            st.subheader("Actual vs Predicted Values")
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.scatter(y_te, y_pred, alpha=0.3, color='#1DB954')
+            ax.plot([y_te.min(), y_te.max()], [y_te.min(), y_te.max()], 'r--', lw=2)
+            ax.set_xlabel("Actual Values")
+            ax.set_ylabel("Predicted Values")
+            st.pyplot(fig)
