@@ -5,6 +5,22 @@ import matplotlib.pyplot as plt
 import glob
 
 # Scikit-learn Tools
+# Scikit-learn Tools
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder, label_binarize
+from sklearn.metrics import (
+    accuracy_score, 
+    precision_recall_fscore_support, 
+    confusion_matrix, 
+    classification_report,
+    roc_curve, 
+    auc
+)
+from sklearn.cluster import KMeans
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import (
