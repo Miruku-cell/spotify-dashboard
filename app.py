@@ -156,8 +156,7 @@ for idx, (feat_A, feat_B) in enumerate(directed_pairs, 1):
 if total_found_rules:
     all_12_pairs_df = pd.concat(total_found_rules, ignore_index=True)
 
-# လိုအပ်သော library များကို install ပြုလုပ်ခြင်း
-!pip install -q gradio mlxtend
+
 
 import gradio as gr
 import pandas as pd
