@@ -56,9 +56,6 @@ print(encoded_cols[:15])
 
 df_encoded.head()
 
-# mlxtend မရှိသေးပါက install လုပ်ခြင်း
-pip install mlxtend
-
 import pandas as pd
 from mlxtend.frequent_patterns import fpgrowth, association_rules
 
