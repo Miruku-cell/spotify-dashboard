@@ -7,7 +7,10 @@ import glob
 # Scikit-learn Tools
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import (
+    accuracy_score, precision_recall_fscore_support, 
+    mean_absolute_error, mean_squared_error, r2_score
+)
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeClassifier
@@ -18,38 +21,41 @@ from sklearn.ensemble import RandomForestClassifier
 # FP-Growth
 from mlxtend.frequent_patterns import fpgrowth, association_rules
 
-st.set_page_config(page_title="Spotify Full Data Mining Project", layout="wide")
+# Page Configuration
+st.set_page_config(page_title="Spotify Data Mining Dashboard", layout="wide")
 st.title("🎵 Spotify End-to-End Data Mining Project Dashboard")
 
-# 1. Load Data
+# 1. Cache Data Loading & Dynamic Feature Engineering
 @st.cache_data
 def load_data():
     csv_files = glob.glob("*.csv")
     if not csv_files:
-        raise FileNotFoundError("CSV dataset not found in repository.")
+        raise FileNotFoundError("CSV dataset not found in the repository root directory.")
     df = pd.read_csv(csv_files[0])
     
-    # Feature Engineering
+    # Feature Transformations
     if 'log_stream_count' not in df.columns and 'stream_count' in df.columns:
         df['log_stream_count'] = np.log1p(df['stream_count'])
     if 'artist_track_count' not in df.columns and 'artist_name' in df.columns:
         df['artist_track_count'] = df['artist_name'].map(df['artist_name'].value_counts())
     if 'popularity_category' not in df.columns and 'popularity' in df.columns:
-        df['popularity_category'] = pd.qcut(df['popularity'], q=3, labels=['Low', 'Medium', 'High'], duplicates='drop')
+        df['popularity_category'] = pd.qcut(
+            df['popularity'], q=3, labels=['Low', 'Medium', 'High'], duplicates='drop'
+        )
     return df
 
 try:
     df = load_data()
-    st.sidebar.success(f"Loaded {len(df):,} records successfully!")
+    st.sidebar.success(f"Dataset successfully loaded: {len(df):,} total records.")
 except Exception as e:
-    st.error(f"Data loading error: {e}")
+    st.error(f"Data loading failed: {e}")
     st.stop()
 
-# Dashboard Tabs for 4 Mining Tasks
+# Multi-Tab Layout for All 4 Coursework Tasks
 tab1, tab2, tab3, tab4 = st.tabs([
     "1. Association (FP-Growth)", 
     "2. Clustering (K-Means)", 
-    "3. Classification (4 Models)", 
+    "3. Classification (4 Classifiers)", 
     "4. Numeric Prediction (Regression)"
 ])
 
@@ -58,19 +64,19 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ==============================================================================
 with tab1:
     st.header("🛒 Frequent Pattern Mining (FP-Growth)")
-    st.markdown("သီချင်းများ၏ High/Low feature attributes များ အတူတကွ တွဲဖက်ဖြစ်ပေါ်မှု စည်းမျဉ်းများကို တူးဖော်ခြင်း")
+    st.markdown("Discover co-occurrence patterns and strong association rules across binarized audio attributes.")
     
     col_a, col_b = st.columns(2)
     with col_a:
-        min_sup = st.slider("Minimum Support (minsup)", min_value=0.01, max_value=0.5, value=0.05, step=0.01)
+        min_sup = st.slider("Minimum Support Threshold (minsup)", min_value=0.01, max_value=0.5, value=0.05, step=0.01)
     with col_b:
-        min_conf = st.slider("Minimum Confidence (minconf)", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
+        min_conf = st.slider("Minimum Confidence Threshold (minconf)", min_value=0.1, max_value=1.0, value=0.3, step=0.05)
         
-    num_cols = [c for c in ['danceability', 'energy', 'speechiness', 'acousticness', 'popularity'] if c in df.columns]
+    candidate_num = [c for c in ['danceability', 'energy', 'speechiness', 'acousticness', 'popularity'] if c in df.columns]
     
-    # Binarize data for FP-growth
+    # Median split binarization
     df_bin = pd.DataFrame()
-    for c in num_cols:
+    for c in candidate_num:
         med = df[c].median()
         df_bin[f"High_{c}"] = df[c] >= med
         
@@ -84,20 +90,20 @@ with tab1:
             rules_disp['consequents'] = rules_disp['consequents'].apply(lambda x: ', '.join(list(x)))
             st.dataframe(rules_disp.head(20), use_container_width=True)
         else:
-            st.warning("No association rules found with the current confidence threshold.")
+            st.warning("No association rules satisfied the minimum confidence threshold.")
     else:
-        st.warning("No frequent itemsets found with the current support threshold.")
+        st.warning("No frequent itemsets satisfied the minimum support threshold.")
 
 # ==============================================================================
 # TAB 2: K-MEANS CLUSTERING
 # ==============================================================================
 with tab2:
     st.header("🎯 Cluster Analysis (K-Means)")
-    st.markdown("သီချင်းများ၏ သဘာဝအလျောက် အုပ်စုဖွဲ့တည်ရှိမှု ပုံစံများကို ဖော်ထုတ်ခြင်း")
+    st.markdown("Partition track audio profiles into natural clusters based on Euclidean distance similarity.")
     
     cluster_features = [c for c in ['danceability', 'energy', 'valence', 'popularity', 'stream_count'] if c in df.columns]
-    selected_cluster_features = st.multiselect("Clustering Features ရွေးချယ်ပါ", cluster_features, default=cluster_features[:3])
-    k_val = st.slider("Cluster အရေအတွက် (k)", min_value=2, max_value=8, value=3)
+    selected_cluster_features = st.multiselect("Select Feature Dimensions", cluster_features, default=cluster_features[:3])
+    k_val = st.slider("Number of Clusters (k)", min_value=2, max_value=8, value=3)
     
     if len(selected_cluster_features) >= 2:
         df_clust = df[selected_cluster_features].dropna()
@@ -110,31 +116,37 @@ with tab2:
         col_c1, col_c2 = st.columns([1, 1])
         with col_c1:
             st.subheader("Cluster Distribution")
-            st.write(df_clust['Cluster'].value_counts().rename("Song Count"))
+            st.write(df_clust['Cluster'].value_counts().rename("Track Count"))
         with col_c2:
-            st.subheader("Cluster Scatter Plot")
+            st.subheader("Bivariate Cluster Scatter Plot")
             fig, ax = plt.subplots(figsize=(6, 4))
-            scatter = ax.scatter(df_clust[selected_cluster_features[0]], df_clust[selected_cluster_features[1]], c=df_clust['Cluster'], cmap='viridis', alpha=0.6)
+            scatter = ax.scatter(
+                df_clust[selected_cluster_features[0]], 
+                df_clust[selected_cluster_features[1]], 
+                c=df_clust['Cluster'], cmap='viridis', alpha=0.6
+            )
             ax.set_xlabel(selected_cluster_features[0])
             ax.set_ylabel(selected_cluster_features[1])
             plt.colorbar(scatter, label='Cluster ID')
             st.pyplot(fig)
     else:
-        st.error("ကျေးဇူးပြု၍ Clustering အတွက် Feature အနည်းဆုံး ၂ ခု ရွေးပေးပါ။")
+        st.error("Please select at least 2 features to perform cluster analysis.")
 
 # ==============================================================================
 # TAB 3: CLASSIFICATION (4 MODELS)
 # ==============================================================================
 with tab3:
-    st.header("🏆 Classification Predictive Mining (4 Classifiers)")
-    target_var = st.selectbox("Target Label ရွေးပါ", ['popularity_category', 'genre'])
+    st.header("🏆 Predictive Mining: Classifier Benchmark (4 Models)")
+    st.markdown("Compare Decision Tree, Naïve Bayes, KNN, and Random Forest on selected target classes.")
+    
+    target_var = st.selectbox("Target Label", ['popularity_category', 'genre'])
     candidate_features = ['danceability', 'popularity', 'stream_count', 'log_stream_count', 'artist_track_count']
     avail_f = [c for c in candidate_features if c in df.columns and c != target_var]
-    selected_f = st.multiselect("Predictor Features ၄ ခု ရွေးပါ", avail_f, default=avail_f[:4])
+    selected_f = st.multiselect("Select Predictor Features", avail_f, default=avail_f[:4])
     
-    if st.button("🚀 Train & Compare 4 Models", type="primary"):
+    if st.button("🚀 Train & Evaluate Classifiers", type="primary"):
         if len(selected_f) < 1:
-            st.error("Feature အနည်းဆုံး ၁ ခု ရွေးပေးပါ။")
+            st.error("Please select at least 1 predictor feature.")
         else:
             df_eval = df.dropna(subset=selected_f + [target_var]).copy()
             if target_var == 'genre':
@@ -151,9 +163,9 @@ with tab3:
 
             models = {
                 "Decision Tree (Gini)": DecisionTreeClassifier(criterion='gini', max_depth=4, random_state=42),
-                "Naïve Bayes": GaussianNB(),
-                "KNN (k=5)": KNeighborsClassifier(n_neighbors=5),
-                "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
+                "Naïve Bayes (Gaussian)": GaussianNB(),
+                "K-Nearest Neighbors (k=5)": KNeighborsClassifier(n_neighbors=5),
+                "Random Forest (Ensemble)": RandomForestClassifier(n_estimators=100, random_state=42)
             }
 
             records = []
@@ -193,16 +205,16 @@ with tab3:
 # TAB 4: MULTIPLE LINEAR REGRESSION
 # ==============================================================================
 with tab4:
-    st.header("📈 Numeric Prediction (Multiple Linear Regression)")
-    st.markdown("သီချင်းများ၏ continuous value (ဥပမာ- Stream Count / Popularity) ကို ခန့်မှန်းတွက်ချက်ခြင်း")
+    st.header("📈 Numeric Prediction: Multiple Linear Regression")
+    st.markdown("Estimate continuous target responses based on multidimensional audio attributes.")
     
     num_target = 'log_stream_count' if 'log_stream_count' in df.columns else 'popularity'
-    st.info(f"Prediction Target Variable: **{num_target}**")
+    st.info(f"Target Response Variable: **{num_target}**")
     
     reg_features = [c for c in ['danceability', 'energy', 'valence', 'artist_track_count'] if c in df.columns]
-    selected_reg_features = st.multiselect("Regression Predictor Features ရွေးပါ", reg_features, default=reg_features[:3])
+    selected_reg_features = st.multiselect("Select Independent Explanatory Variables", reg_features, default=reg_features[:3])
     
-    if st.button("🚀 Train Regression Model"):
+    if st.button("🚀 Train Linear Regression Model"):
         df_reg = df.dropna(subset=selected_reg_features + [num_target])
         X_reg = df_reg[selected_reg_features]
         y_reg = df_reg[num_target]
@@ -219,21 +231,21 @@ with tab4:
         
         rc1, rc2 = st.columns([1, 1])
         with rc1:
-            st.subheader("Model Formula & Parameters")
-            st.write(f"**Intercept (b):** {reg_model.intercept_:.4f}")
+            st.subheader("Model Parameters")
+            st.write(f"**Intercept ($b$):** {reg_model.intercept_:.4f}")
             for feat, coef in zip(selected_reg_features, reg_model.coef_):
-                st.write(f"- Weight for **{feat}** ($w$): {coef:.4f}")
+                st.write(f"- Coefficient for **{feat}** ($w$): {coef:.4f}")
             st.markdown("---")
-            st.subheader("Evaluation Metrics")
-            st.write(f"- **MAE:** {mae:.4f}")
-            st.write(f"- **RMSE:** {rmse:.4f}")
-            st.write(f"- **R² Score:** {r2:.4f}")
+            st.subheader("Error & Goodness-of-Fit Metrics")
+            st.write(f"- **Mean Absolute Error (MAE):** {mae:.4f}")
+            st.write(f"- **Root Mean Squared Error (RMSE):** {rmse:.4f}")
+            st.write(f"- **Coefficient of Determination ($R^2$):** {r2:.4f}")
             
         with rc2:
-            st.subheader("Actual vs Predicted Values")
+            st.subheader("Observed vs. Predicted Distribution")
             fig, ax = plt.subplots(figsize=(6, 4))
             ax.scatter(y_te, y_pred, alpha=0.3, color='#1DB954')
             ax.plot([y_te.min(), y_te.max()], [y_te.min(), y_te.max()], 'r--', lw=2)
-            ax.set_xlabel("Actual Values")
-            ax.set_ylabel("Predicted Values")
+            ax.set_xlabel("Observed Ground Truth")
+            ax.set_ylabel("Predicted Value")
             st.pyplot(fig)
