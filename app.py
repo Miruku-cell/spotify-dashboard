@@ -247,43 +247,85 @@ with tab3:
                 st.pyplot(fig)
 
 # ==============================================================================
-# PAGE 4: MULTIPLE LINEAR REGRESSION
+# PAGE 4: IN-DEPTH EVALUATION (RANDOM FOREST)
 # ==============================================================================
 with tab4:
-    st.subheader("📈 Numeric Prediction: Multiple Linear Regression")
-    st.write("Predict Popularity scores based on track audio and metadata features.")
+    st.subheader("📊 In-Depth Model Evaluation (Random Forest)")
+    st.write("Comprehensive performance diagnostics: Confusion Matrix, Feature Importance, and Multiclass ROC Curves.")
     
-    reg_features = [c for c in ['danceability', 'stream_count', 'artist_track_count', 'log_stream_count'] if c in df.columns]
-    selected_reg_inputs = st.multiselect("Select Independent Features for Popularity:", reg_features, default=['danceability', 'log_stream_count', 'artist_track_count'])
+    # Clean Features (Data leakage မဖြစ်အောင် popularity ကို ဖယ်ထုတ်ထားသည်)
+    rf_features = ['danceability', 'log_stream_count', 'artist_track_count']
+    target_rf = 'popularity_category'
     
-    if st.button("🚀 Train Linear Regression", type="primary"):
-        if len(selected_reg_inputs) < 1:
-            st.error("Please select at least 1 feature.")
-        else:
-            X_r = df[selected_reg_inputs]
-            y_r = df['popularity']
+    if st.button("🚀 Run Comprehensive Evaluation", type="primary"):
+        df_rf = df.dropna(subset=rf_features + [target_rf]).copy()
+        
+        X_eval = df_rf[rf_features]
+        le_rf = LabelEncoder()
+        y_eval = le_rf.fit_transform(df_rf[target_rf].astype(str))
+        class_labels = [str(c) for c in le_rf.classes_]
+        
+        X_train_rf, X_test_rf, y_train_rf, y_test_rf = train_test_split(
+            X_eval, y_eval, test_size=0.2, random_state=42, stratify=y_eval
+        )
+        
+        rf = RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42)
+        rf.fit(X_train_rf, y_train_rf)
+        
+        y_pred_rf = rf.predict(X_test_rf)
+        y_proba_rf = rf.predict_proba(X_test_rf)
+        
+        acc_rf = accuracy_score(y_test_rf, y_pred_rf)
+        err_rf = 1.0 - acc_rf
+        p_rf, r_rf, f1_rf, _ = precision_recall_fscore_support(y_test_rf, y_pred_rf, average='weighted', zero_division=0)
+        
+        # Summary Metrics Row
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Accuracy", f"{acc_rf * 100:.2f}%")
+        m2.metric("Error Rate", f"{err_rf * 100:.2f}%")
+        m3.metric("Precision", f"{p_rf:.4f}")
+        m4.metric("Recall", f"{r_rf:.4f}")
+        m5.metric("F1-Score", f"{f1_rf:.4f}")
+        
+        st.divider()
+        
+        # 3 Diagnostic Plots
+        p_col1, p_col2, p_col3 = st.columns(3)
+        
+        with p_col1:
+            st.markdown("**Confusion Matrix Heatmap**")
+            fig_cm, ax_cm = plt.subplots(figsize=(4.5, 3.8))
+            cm_data = confusion_matrix(y_test_rf, y_pred_rf)
+            sns.heatmap(cm_data, annot=True, fmt="d", cmap="Blues", ax=ax_cm,
+                        xticklabels=class_labels, yticklabels=class_labels)
+            ax_cm.set_xlabel("Predicted Label")
+            ax_cm.set_ylabel("True Ground Truth")
+            st.pyplot(fig_cm)
             
-            X_tr, X_te, y_tr, y_te = train_test_split(X_r, y_r, test_size=0.2, random_state=42)
-            lr = LinearRegression()
-            lr.fit(X_tr, y_tr)
-            y_pred = lr.predict(X_te)
+        with p_col2:
+            st.markdown("**Feature Importance Ranking**")
+            fig_fi, ax_fi = plt.subplots(figsize=(4.5, 3.8))
+            fi_series = pd.Series(rf.feature_importances_, index=rf_features).sort_values(ascending=True)
+            fi_series.plot(kind='barh', ax=ax_fi, color='#1DB954', edgecolor='black')
+            ax_fi.set_xlabel("Gini Importance Score")
+            st.pyplot(fig_fi)
             
-            r_col1, r_col2 = st.columns([1, 1])
-            with r_col1:
-                st.markdown("**Linear Formula Parameters**")
-                st.write(f"- **Intercept ($b$):** `{lr.intercept_:.4f}`")
-                for col_name, coef in zip(selected_reg_inputs, lr.coef_):
-                    st.write(f"- Weight for **{col_name}** ($w$): `{coef:.4f}`")
-                st.divider()
-                st.markdown("**Evaluation Metrics**")
-                st.write(f"- **MAE:** `{mean_absolute_error(y_te, y_pred):.4f}`")
-                st.write(f"- **RMSE:** `{np.sqrt(mean_squared_error(y_te, y_pred)):.4f}`")
-                st.write(f"- **$R^2$ Score:** `{r2_score(y_te, y_pred):.4f}`")
-            with r_col2:
-                st.markdown("**Actual vs. Predicted Scatter Plot**")
-                fig, ax = plt.subplots(figsize=(6, 4))
-                ax.scatter(y_te, y_pred, alpha=0.3, color='#1DB954')
-                ax.plot([y_te.min(), y_te.max()], [y_te.min(), y_te.max()], 'r--', lw=2)
-                ax.set_xlabel("Actual Popularity")
-                ax.set_ylabel("Predicted Popularity")
-                st.pyplot(fig)
+        with p_col3:
+            st.markdown("**Multiclass ROC Curve Analysis**")
+            fig_roc, ax_roc = plt.subplots(figsize=(4.5, 3.8))
+            y_bin = label_binarize(y_test_rf, classes=range(len(class_labels)))
+            curve_colors = ['#1DB954', '#4682B4', '#FFA500', '#9370DB']
+            
+            for idx in range(len(class_labels)):
+                fpr, tpr, _ = roc_curve(y_bin[:, idx], y_proba_rf[:, idx])
+                roc_auc_val = auc(fpr, tpr)
+                ax_roc.plot(fpr, tpr, lw=2, color=curve_colors[idx % len(curve_colors)],
+                            label=f'{class_labels[idx]} (AUC = {roc_auc_val:.2f})')
+                
+            ax_roc.plot([0, 1], [0, 1], 'k--', lw=1.2)
+            ax_roc.set_xlim([0.0, 1.0])
+            ax_roc.set_ylim([0.0, 1.05])
+            ax_roc.set_xlabel("FPR")
+            ax_roc.set_ylabel("TPR")
+            ax_roc.legend(loc="lower right", fontsize='small')
+            st.pyplot(fig_roc)
