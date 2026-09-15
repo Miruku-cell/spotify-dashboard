@@ -7,8 +7,14 @@ import glob
 # Scikit-learn Tools
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, mean_absolute_error, mean_squared_error, r2_score
-from sklearn.cluster import KMeans
+from sklearn.metrics import (
+    accuracy_score, 
+    precision_recall_fscore_support, 
+    confusion_matrix, 
+    classification_report,
+    roc_curve, 
+    auc
+)
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
