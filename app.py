@@ -66,7 +66,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "1. Frequent Pattern Mining (FP-Growth)",
     "2. Clustering (K-Means)",
     "3. Classification Benchmark",
-    "4. Numeric Prediction (Regression)"
+    "4. Model Evaluation (Random Forest)"
 ])
 
 # ==============================================================================
